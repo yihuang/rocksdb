@@ -791,7 +791,14 @@ Status ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile(
   int target_level = 0;
   auto* vstorage = cfd_->current()->storage_info();
 
-  for (int lvl = 0; lvl < cfd_->NumberLevels(); lvl++) {
+  // bottommost_level is either the bottommmost non-empty level plus one, or
+  // `num_level-1`.
+  int bottommost_level = vstorage->num_non_empty_levels();
+  if (bottommost_level > cfd_->NumberLevels() - 1) {
+    bottommost_level = cfd_->NumberLevels() - 1;
+  }
+
+  for (int lvl = 0; lvl <= bottommost_level; lvl++) {
     if (lvl > 0 && lvl < vstorage->base_level()) {
       continue;
     }
@@ -842,6 +849,7 @@ Status ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile(
       target_level = lvl;
     }
   }
+
   // If files overlap, we have to ingest them at level 0 and assign the newest
   // sequence number
   if (files_overlap_) {
@@ -850,7 +858,7 @@ Status ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile(
   }
 
   if (ingestion_options_.fail_if_not_bottommost_level &&
-      target_level < cfd_->NumberLevels() - 1) {
+      target_level != bottommost_level) {
     status = Status::TryAgain(
         "Files cannot be ingested to Lmax. Please make sure key range of Lmax "
         "does not overlap with files to ingest.");
